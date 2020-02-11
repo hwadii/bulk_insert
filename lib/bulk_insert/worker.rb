@@ -5,9 +5,9 @@ module BulkInsert
     attr_accessor :before_save_callback
     attr_accessor :after_save_callback
     attr_accessor :adapter_name
-    attr_reader :ignore, :update_duplicates, :result_sets
+    attr_reader :ignore, :update_duplicates, :update_duplicates_where, :result_sets
 
-    def initialize(connection, table_name, primary_key, column_names, set_size=500, ignore=false, update_duplicates=false, return_primary_keys=false)
+    def initialize(connection, table_name, primary_key, column_names, set_size=500, ignore=false, update_duplicates=false, update_duplicates_where=false, return_primary_keys=false)
       @connection = connection
       @set_size = set_size
 
@@ -15,6 +15,7 @@ module BulkInsert
       # INSERT IGNORE only fails inserts with duplicate keys or unallowed nulls not the whole set of inserts
       @ignore = ignore
       @update_duplicates = update_duplicates
+      @update_duplicates_where = update_duplicates_where
       @return_primary_keys = return_primary_keys
 
       columns = connection.columns(table_name)
@@ -159,9 +160,11 @@ module BulkInsert
         ' ON CONFLICT DO NOTHING'
       elsif is_postgres && update_duplicates
         update_values = @columns.map do |column|
+          next if column.name == 'created_at'
           "#{column.name}=EXCLUDED.#{column.name}"
-        end.join(', ')
-        ' ON CONFLICT(' + update_duplicates.join(', ') + ') DO UPDATE SET ' + update_values
+        end.compact.join(', ')
+        where = " WHERE #{update_duplicates_where}" if update_duplicates_where
+        ' ON CONFLICT(' + update_duplicates.join(', ') + ')' + where.to_s + ' DO UPDATE SET ' + update_values
       elsif adapter_name =~ /^mysql/i && update_duplicates
         update_values = @columns.map do |column|
           "`#{column.name}`=VALUES(`#{column.name}`)"
