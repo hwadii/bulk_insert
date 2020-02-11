@@ -145,6 +145,7 @@ class BulkInsertWorkerTest < ActiveSupport::TestCase
       500,
       false,
       false,
+      false,
       true
     )
 
@@ -361,16 +362,16 @@ class BulkInsertWorkerTest < ActiveSupport::TestCase
     connection = Testing.connection
     stub_connection_if_needed(connection, 'PostgreSQL') do
       pgsql_worker = BulkInsert::Worker.new(
-        connection,
+        Testing.connection,
         Testing.table_name,
         'id',
         %w(greeting age happy created_at updated_at color),
         500, # batch size
         true, # ignore
         false, # update duplicates
+        false, # update duplicates where
         true # return primary keys
       )
-
       pgsql_worker.add ["Yo", 15, false, nil, nil]
 
       assert_statement_adapter pgsql_worker, 'BulkInsert::StatementAdapters::PostgreSQLAdapter'
@@ -413,13 +414,14 @@ class BulkInsertWorkerTest < ActiveSupport::TestCase
     connection = Testing.connection
     stub_connection_if_needed(connection, 'PostgreSQL') do
       pgsql_worker = BulkInsert::Worker.new(
-        connection,
+        Testing.connection,
         Testing.table_name,
         'id',
         %w(greeting age happy created_at updated_at color),
         500, # batch size
         false, # ignore
         %w(greeting age happy), # update duplicates
+        false, # update duplicates where
         true # return primary keys
       )
       pgsql_worker.add ["Yo", 15, false, nil, nil]
@@ -434,17 +436,36 @@ class BulkInsertWorkerTest < ActiveSupport::TestCase
     end
   end
 
+  test "adapter dependent postgresql methods (with update_duplicates and where)" do
+    pgsql_worker = BulkInsert::Worker.new(
+      Testing.connection,
+      Testing.table_name,
+      'id',
+      %w(greeting age happy created_at updated_at color),
+      500, # batch size
+      false, # ignore
+      %w(greeting age), # update duplicates
+      'happy IS NULL', # update duplicates where
+      true # return primary keys
+    )
+    pgsql_worker.adapter_name = 'PostgreSQL'
+    pgsql_worker.add ["Yo", 15, false, nil, nil]
+
+    assert_equal pgsql_worker.compose_insert_query, "INSERT  INTO \"testings\" (\"greeting\",\"age\",\"happy\",\"created_at\",\"updated_at\",\"color\") VALUES ('Yo',15,0,NULL,NULL,'chartreuse') ON CONFLICT(greeting, age) WHERE happy IS NULL DO UPDATE SET greeting=EXCLUDED.greeting, age=EXCLUDED.age, happy=EXCLUDED.happy, updated_at=EXCLUDED.updated_at, color=EXCLUDED.color RETURNING id"
+  end
+
   test "adapter dependent PostGIS methods" do
     connection = Testing.connection
     stub_connection_if_needed(connection, 'postgis') do
       pgsql_worker = BulkInsert::Worker.new(
-        connection,
+        Testing.connection,
         Testing.table_name,
         'id',
         %w(greeting age happy created_at updated_at color),
         500, # batch size
         true, # ignore
         false, # update duplicates
+        false, # update duplicates where
         true # return primary keys
       )
       pgsql_worker.add ["Yo", 15, false, nil, nil]
