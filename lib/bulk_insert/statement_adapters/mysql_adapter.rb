@@ -7,7 +7,7 @@ module BulkInsert
         'IGNORE'
       end
 
-      def on_conflict_statement(columns, _ignore, update_duplicates)
+      def on_conflict_statement(columns, _ignore, update_duplicates, _update_duplicates_where = nil)
         return '' unless update_duplicates
 
         update_values = columns.map do |column|

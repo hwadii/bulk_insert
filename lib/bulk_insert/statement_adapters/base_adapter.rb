@@ -9,7 +9,7 @@ module BulkInsert
         raise "Not implemented"
       end
 
-      def on_conflict_statement(_columns, _ignore, _update_duplicates)
+      def on_conflict_statement(_columns, _ignore, _update_duplicates, _update_duplicates_where)
         raise "Not implemented"
       end
 

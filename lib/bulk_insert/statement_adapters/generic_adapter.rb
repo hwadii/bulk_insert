@@ -7,7 +7,7 @@ module BulkInsert
         ''
       end
 
-      def on_conflict_statement(_columns, _ignore, _update_duplicates)
+      def on_conflict_statement(_columns, _ignore, _update_duplicates, _update_duplicates_where)
         ''
       end
 

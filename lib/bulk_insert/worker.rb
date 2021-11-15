@@ -2,14 +2,12 @@ require_relative 'statement_adapters'
 
 module BulkInsert
   class Worker
-    attr_reader :connection
-    attr_accessor :set_size
-    attr_accessor :before_save_callback
-    attr_accessor :after_save_callback
-    attr_accessor :adapter_name
-    attr_reader :ignore, :update_duplicates, :update_duplicates_where, :result_sets
+    attr_accessor :set_size, :before_save_callback, :after_save_callback, :adapter_name
+    attr_reader :connection, :ignore, :update_duplicates, :update_duplicates_where, :result_sets
 
     def initialize(connection, table_name, primary_key, column_names, set_size=500, ignore=false, update_duplicates=false, update_duplicates_where=false, return_primary_keys=false)
+      @statement_adapter = StatementAdapters.adapter_for(connection)
+
       @connection = connection
       @set_size = set_size
 
@@ -36,7 +34,7 @@ module BulkInsert
     end
 
     def inserted_ids
-      @return_primary_keys ? @result_sets.map(&:rows).flatten : nil
+      @result_sets.map(&:rows).flatten if @return_primary_keys
     end
 
     def pending?
@@ -85,9 +83,9 @@ module BulkInsert
 
     def save!
       if pending?
-        @before_save_callback.(@set) if @before_save_callback
+        @before_save_callback&.(@set)
         execute_query
-        @after_save_callback.() if @after_save_callback
+        @after_save_callback&.()
         @set.clear
       end
 
@@ -137,7 +135,7 @@ module BulkInsert
 
       if !rows.empty?
         sql << rows.join(",")
-        sql << @statement_adapter.on_conflict_statement(@columns, ignore, update_duplicates)
+        sql << @statement_adapter.on_conflict_statement(@columns, ignore, update_duplicates, update_duplicates_where)
         sql << @statement_adapter.primary_key_return_statement(@primary_key) if @return_primary_keys
         sql
       else
@@ -148,48 +146,6 @@ module BulkInsert
     def insert_sql_statement
       insert_ignore = @ignore ? @statement_adapter.insert_ignore_statement : ''
       "INSERT #{insert_ignore} INTO #{@table_name} (#{@column_names}) VALUES "
-    end
-
-    def insert_ignore
-      if ignore
-        case adapter_name
-        when /^mysql/i
-          'IGNORE'
-        when /\ASQLite/i # SQLite
-          'OR IGNORE'
-        else
-          '' # Not supported
-        end
-      end
-    end
-
-    def primary_key_return_statement
-      if @return_primary_keys && adapter_name =~ /\APost(?:greSQL|GIS)/i
-        " RETURNING #{@primary_key}"
-      else
-        ''
-      end
-    end
-
-    def on_conflict_statement
-      is_postgres = adapter_name =~ /\APost(?:greSQL|GIS)/i
-      if is_postgres && ignore
-        ' ON CONFLICT DO NOTHING'
-      elsif is_postgres && update_duplicates
-        update_values = @columns.map do |column|
-          next if column.name == 'created_at'
-          "#{column.name}=EXCLUDED.#{column.name}"
-        end.compact.join(', ')
-        where = " WHERE #{update_duplicates_where}" if update_duplicates_where
-        ' ON CONFLICT(' + update_duplicates.join(', ') + ')' + where.to_s + ' DO UPDATE SET ' + update_values
-      elsif adapter_name =~ /^mysql/i && update_duplicates
-        update_values = @columns.map do |column|
-          "`#{column.name}`=VALUES(`#{column.name}`)"
-        end.join(', ')
-        ' ON DUPLICATE KEY UPDATE ' + update_values
-      else
-        ''
-      end
     end
   end
 end

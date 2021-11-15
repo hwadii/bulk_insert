@@ -395,6 +395,7 @@ class BulkInsertWorkerTest < ActiveSupport::TestCase
         500, # batch size
         false, # ignore
         false, # update duplicates
+        false, # update duplicates where
         true # return primary keys
       )
 
@@ -429,29 +430,31 @@ class BulkInsertWorkerTest < ActiveSupport::TestCase
       assert_statement_adapter pgsql_worker, 'BulkInsert::StatementAdapters::PostgreSQLAdapter'
 
       if ActiveRecord::VERSION::STRING >= "5.0.0"
-        assert_equal pgsql_worker.compose_insert_query, "INSERT  INTO \"testings\" (\"greeting\",\"age\",\"happy\",\"created_at\",\"updated_at\",\"color\") VALUES ('Yo',15,FALSE,NULL,NULL,'chartreuse') ON CONFLICT(greeting, age, happy) DO UPDATE SET greeting=EXCLUDED.greeting, age=EXCLUDED.age, happy=EXCLUDED.happy, created_at=EXCLUDED.created_at, updated_at=EXCLUDED.updated_at, color=EXCLUDED.color RETURNING id"
+        assert_equal pgsql_worker.compose_insert_query, "INSERT  INTO \"testings\" (\"greeting\",\"age\",\"happy\",\"created_at\",\"updated_at\",\"color\") VALUES ('Yo',15,FALSE,NULL,NULL,'chartreuse') ON CONFLICT(greeting, age, happy)  DO UPDATE SET greeting=EXCLUDED.greeting, age=EXCLUDED.age, happy=EXCLUDED.happy, updated_at=EXCLUDED.updated_at, color=EXCLUDED.color RETURNING id"
       else
-        assert_equal pgsql_worker.compose_insert_query, "INSERT  INTO \"testings\" (\"greeting\",\"age\",\"happy\",\"created_at\",\"updated_at\",\"color\") VALUES ('Yo',15,'f',NULL,NULL,'chartreuse') ON CONFLICT(greeting, age, happy) DO UPDATE SET greeting=EXCLUDED.greeting, age=EXCLUDED.age, happy=EXCLUDED.happy, created_at=EXCLUDED.created_at, updated_at=EXCLUDED.updated_at, color=EXCLUDED.color RETURNING id"
+        assert_equal pgsql_worker.compose_insert_query, "INSERT  INTO \"testings\" (\"greeting\",\"age\",\"happy\",\"created_at\",\"updated_at\",\"color\") VALUES ('Yo',15,'f',NULL,NULL,'chartreuse') ON CONFLICT(greeting, age, happy)  DO UPDATE SET greeting=EXCLUDED.greeting, age=EXCLUDED.age, happy=EXCLUDED.happy, updated_at=EXCLUDED.updated_at, color=EXCLUDED.color RETURNING id"
       end
     end
   end
 
   test "adapter dependent postgresql methods (with update_duplicates and where)" do
-    pgsql_worker = BulkInsert::Worker.new(
-      Testing.connection,
-      Testing.table_name,
-      'id',
-      %w(greeting age happy created_at updated_at color),
-      500, # batch size
-      false, # ignore
-      %w(greeting age), # update duplicates
-      'happy IS NULL', # update duplicates where
-      true # return primary keys
-    )
-    pgsql_worker.adapter_name = 'PostgreSQL'
-    pgsql_worker.add ["Yo", 15, false, nil, nil]
+    connection = Testing.connection
+    stub_connection_if_needed(connection, 'PostgreSQL') do
+      pgsql_worker = BulkInsert::Worker.new(
+        Testing.connection,
+        Testing.table_name,
+        'id',
+        %w(greeting age happy created_at updated_at color),
+        500, # batch size
+        false, # ignore
+        %w(greeting age), # update duplicates
+        'happy IS NULL', # update duplicates where
+        true # return primary keys
+      )
+      pgsql_worker.add ["Yo", 15, false, nil, nil]
 
-    assert_equal pgsql_worker.compose_insert_query, "INSERT  INTO \"testings\" (\"greeting\",\"age\",\"happy\",\"created_at\",\"updated_at\",\"color\") VALUES ('Yo',15,0,NULL,NULL,'chartreuse') ON CONFLICT(greeting, age) WHERE happy IS NULL DO UPDATE SET greeting=EXCLUDED.greeting, age=EXCLUDED.age, happy=EXCLUDED.happy, updated_at=EXCLUDED.updated_at, color=EXCLUDED.color RETURNING id"
+      assert_equal pgsql_worker.compose_insert_query, "INSERT  INTO \"testings\" (\"greeting\",\"age\",\"happy\",\"created_at\",\"updated_at\",\"color\") VALUES ('Yo',15,FALSE,NULL,NULL,'chartreuse') ON CONFLICT(greeting, age)  WHERE happy IS NULL DO UPDATE SET greeting=EXCLUDED.greeting, age=EXCLUDED.age, happy=EXCLUDED.happy, updated_at=EXCLUDED.updated_at, color=EXCLUDED.color RETURNING id"
+    end
   end
 
   test "adapter dependent PostGIS methods" do
